@@ -171,23 +171,20 @@ func (p *Pinger) processPacket(c *icmp.PacketConn, recv *packet) error {
 	if err != nil {
 		return err
 	}
+	mb, err := rm.Body.Marshal(protocolICMP)
+	if err != nil {
+		return err
+	}
 
 	switch rm.Type {
-	case ipv4.ICMPTypeEcho, ipv4.ICMPTypeEchoReply:
-		mb, err := rm.Body.Marshal(protocolICMP)
-		if err != nil {
-			return err
+	case ipv4.ICMPTypeEchoReply:
+		msg, _ := ParseICMPEcho(mb)
+		handler := p.OnRecv
+		if handler != nil {
+			handler(msg)
 		}
-		fmt.Println("ICMP Echo Frome Remote Host:", recv.peer.String())
-		if rm.Type == ipv4.ICMPTypeEcho {
-			SendICMPEcho(c, recv.peer.String(), ipv4.ICMPTypeEchoReply, []byte("ACK"))
-		} else {
-			msg, _ := ParseICMPEcho(mb)
-			handler := p.OnRecv
-			if handler != nil {
-				handler(msg)
-			}
-		}
+	case ipv4.ICMPTypeEcho:
+		SendICMPEcho(c, recv.peer.String(), ipv4.ICMPTypeEchoReply, mb)
 	default:
 		log.Printf("got %+v\n", rm)
 	}
