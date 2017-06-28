@@ -184,6 +184,7 @@ func (p *Pinger) processPacket(c *icmp.PacketConn, recv *packet) error {
 			handler(msg)
 		}
 	case ipv4.ICMPTypeEcho:
+		fmt.Println("send echo reply")
 		SendICMPEcho(c, recv.peer.String(), ipv4.ICMPTypeEchoReply, mb)
 	default:
 		log.Printf("got %+v\n", rm)
