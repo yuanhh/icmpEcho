@@ -20,6 +20,8 @@ const (
 )
 
 type Pinger struct {
+	Interval time.Duration
+
 	OnRecv func(*icmp.Echo)
 
 	done chan bool
@@ -37,11 +39,12 @@ type packet struct {
 
 func NewPinger() *Pinger {
 	return &Pinger{
-		OnRecv: nil,
-		ipaddr: nil,
-		addr:   "",
-		source: "0.0.0.0",
-		done:   make(chan bool),
+		Interval: time.Second,
+		OnRecv:   nil,
+		ipaddr:   nil,
+		addr:     "",
+		source:   "0.0.0.0",
+		done:     make(chan bool),
 	}
 }
 
@@ -63,7 +66,7 @@ func (p *Pinger) SetIPAddr(ipaddr *net.IPAddr) {
 }
 
 func (p *Pinger) SetAddr(addr string) error {
-	ipaddr, err := net.ResolveIPAddr("ip", addr)
+	ipaddr, err := net.ResolveIPAddr("ip4:icmp", addr)
 	if err != nil {
 		return err
 	}
@@ -88,15 +91,14 @@ func (p *Pinger) Run(mode bool) {
 	recv := make(chan *packet, 5)
 	wg.Add(1)
 	go p.recvICMP(c, recv, &wg)
-	if mode {
-		fmt.Println("Client Mode")
-		wg.Add(2)
-		go p.sendICMP(c, &wg)
-	}
 
+	interval := time.NewTicker(p.Interval)
+	if !mode {
+		interval.Stop()
+	}
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
-	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+	signal.Notify(sig, syscall.SIGTERM)
 
 	for {
 		select {
@@ -105,6 +107,11 @@ func (p *Pinger) Run(mode bool) {
 		case <-p.done:
 			wg.Wait()
 			return
+		case <-interval.C:
+			err = p.sendICMP(c)
+			if err != nil {
+				log.Fatal(err)
+			}
 		case r := <-recv:
 			err := p.processPacket(c, r)
 			if err != nil {
@@ -133,6 +140,7 @@ func (p *Pinger) recvICMP(
 					if neterr.Timeout() {
 						continue
 					} else {
+
 						return
 					}
 				}
@@ -142,26 +150,21 @@ func (p *Pinger) recvICMP(
 	}
 }
 
-func (p *Pinger) sendICMP(c *icmp.PacketConn, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (p *Pinger) sendICMP(c *icmp.PacketConn) error {
 
 	for {
-		select {
-		case <-p.done:
-			return
-		default:
-			err := SendICMPEcho(c, p.addr, ipv4.ICMPTypeEcho, []byte("STREAMING_REQUEST"))
-			if err != nil {
-				if neterr, ok := err.(*net.OpError); ok {
-					if neterr.Err == syscall.ENOBUFS {
-						continue
-					}
+		err := SendICMPEcho(c, p.addr, ipv4.ICMPTypeEcho, []byte("STREAMING_REQUEST"))
+		if err != nil {
+			if neterr, ok := err.(*net.OpError); ok {
+				if neterr.Err == syscall.ENOBUFS {
+					continue
 				}
-				return
+				return err
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		break
 	}
+	return nil
 }
 
 func (p *Pinger) processPacket(c *icmp.PacketConn, recv *packet) error {

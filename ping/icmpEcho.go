@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"golang.org/x/net/icmp"
+	"golang.org/x/net/ipv4"
 )
 
 // parseICMPEcho parses b as an ICMP echo request or reply message body.
@@ -23,7 +24,7 @@ func ParseICMPEcho(b []byte) (*icmp.Echo, error) {
 func SendICMPEcho(
 	c *icmp.PacketConn,
 	addr string,
-	typ icmp.Type,
+	typ ipv4.ICMPType,
 	bytes []byte,
 ) error {
 	wm := icmp.Message{
