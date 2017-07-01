@@ -108,7 +108,7 @@ func (p *Pinger) Run(mode bool) {
 			wg.Wait()
 			return
 		case <-interval.C:
-			err = p.sendICMP(c)
+			err = p.sendICMP(c, ipv4.ICMPTypeEcho, []byte("Test"))
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -150,10 +150,13 @@ func (p *Pinger) recvICMP(
 	}
 }
 
-func (p *Pinger) sendICMP(c *icmp.PacketConn) error {
-
+func (p *Pinger) sendICMP(
+	c *icmp.PacketConn,
+	typ ipv4.ICMPType,
+	bytes []byte,
+) error {
 	for {
-		err := SendICMPEcho(c, p.addr, ipv4.ICMPTypeEcho, []byte("STREAMING_REQUEST"))
+		err := SendICMPEcho(c, p.addr, typ, bytes)
 		if err != nil {
 			if neterr, ok := err.(*net.OpError); ok {
 				if neterr.Err == syscall.ENOBUFS {
@@ -168,7 +171,6 @@ func (p *Pinger) sendICMP(c *icmp.PacketConn) error {
 }
 
 func (p *Pinger) processPacket(c *icmp.PacketConn, recv *packet) error {
-
 	rb := recv.bytes
 	rm, err := icmp.ParseMessage(protocolICMP, rb[:recv.nbytes])
 	if err != nil {
@@ -187,8 +189,9 @@ func (p *Pinger) processPacket(c *icmp.PacketConn, recv *packet) error {
 			handler(msg)
 		}
 	case ipv4.ICMPTypeEcho:
-		fmt.Println("send echo reply")
-		SendICMPEcho(c, recv.peer.String(), ipv4.ICMPTypeEchoReply, mb)
+		p.SetAddr(recv.peer.String())
+		fmt.Println("send echo reply to:", p.addr)
+		p.sendICMP(c, ipv4.ICMPTypeEchoReply, mb)
 	default:
 		log.Printf("got %+v\n", rm)
 	}
