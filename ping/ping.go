@@ -156,7 +156,7 @@ func (p *Pinger) sendICMP(
 	bytes []byte,
 ) error {
 	for {
-		err := SendICMPEcho(c, p.addr, typ, bytes)
+		err := SendICMPMsg(c, p.addr, typ, bytes)
 		if err != nil {
 			if neterr, ok := err.(*net.OpError); ok {
 				if neterr.Err == syscall.ENOBUFS {
@@ -180,18 +180,18 @@ func (p *Pinger) processPacket(c *icmp.PacketConn, recv *packet) error {
 	if err != nil {
 		return err
 	}
+	e, _ := ParseICMPEcho(mb)
 
 	switch rm.Type {
 	case ipv4.ICMPTypeEchoReply:
-		msg, _ := ParseICMPEcho(mb)
 		handler := p.OnRecv
 		if handler != nil {
-			handler(msg)
+			handler(e)
 		}
 	case ipv4.ICMPTypeEcho:
 		p.SetAddr(recv.peer.String())
 		fmt.Println("send echo reply to:", p.addr)
-		p.sendICMP(c, ipv4.ICMPTypeEchoReply, mb)
+		SendICMPEcho(c, p.addr, ipv4.ICMPTypeEchoReply, e)
 	default:
 		log.Printf("got %+v\n", rm)
 	}

@@ -4,6 +4,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"syscall"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -21,20 +22,42 @@ func ParseICMPEcho(b []byte) (*icmp.Echo, error) {
 	return p, nil
 }
 
-func SendICMPEcho(
+func SendICMPMsg(
 	c *icmp.PacketConn,
 	addr string,
 	typ ipv4.ICMPType,
 	bytes []byte,
 ) error {
+	e := &icmp.Echo{
+		ID:   os.Getpid() & 0xffff,
+		Seq:  1,
+		Data: bytes,
+	}
+	for {
+		err := SendICMPEcho(c, addr, typ, e)
+		if err != nil {
+			if neterr, ok := err.(*net.OpError); ok {
+				if neterr.Err == syscall.ENOBUFS {
+					continue
+				}
+				return err
+			}
+		}
+		break
+	}
+	return nil
+}
+
+func SendICMPEcho(
+	c *icmp.PacketConn,
+	addr string,
+	typ ipv4.ICMPType,
+	e *icmp.Echo,
+) error {
 	wm := icmp.Message{
 		Type: typ,
 		Code: 0,
-		Body: &icmp.Echo{
-			ID:   os.Getpid() & 0xffff,
-			Seq:  1,
-			Data: bytes,
-		},
+		Body: e,
 	}
 	wb, err := wm.Marshal(nil)
 	if err != nil {
